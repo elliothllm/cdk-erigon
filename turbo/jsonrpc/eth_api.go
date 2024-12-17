@@ -379,8 +379,8 @@ type APIImpl struct {
 	gasTracker                    RpcL1GasPriceTracker
 	RejectLowGasPriceTransactions bool
 	RejectLowGasPriceTolerance    float64
- 
-	logLevel                    utils.LogLevel
+
+	logLevel utils.LogLevel
 }
 
 // NewEthAPI returns APIImpl instance

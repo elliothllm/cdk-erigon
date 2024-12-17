@@ -592,10 +592,8 @@ func sequencingBatchStep(
 			return err
 		}
 
-		if err := cfg.txPool.RemoveMinedTransactions(ctx, sdb.tx, header.GasLimit, batchState.blockState.builtBlockElements.txSlots); err != nil {
-			return err
-		}
-		if err := cfg.txPool.RemoveMinedTransactions(ctx, sdb.tx, header.GasLimit, batchState.blockState.transactionsToDiscard); err != nil {
+		txsToRemove := append(batchState.blockState.builtBlockElements.txSlots, batchState.blockState.transactionsToDiscard...)
+		if err = cfg.txPool.RemoveMinedTransactions(ctx, sdb.tx, header.GasLimit, txsToRemove); err != nil {
 			return err
 		}
 
