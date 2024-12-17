@@ -59,6 +59,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	"github.com/ledgerwatch/erigon-lib/types"
+	"github.com/ledgerwatch/erigon/zk/nonce_cache"
 )
 
 var (
@@ -338,6 +339,8 @@ type TxPool struct {
 	limbo *Limbo
 
 	logLevel utils.LogLevel
+
+	nonceCache *nonce_cache.NonceCache
 }
 
 func CreateTxPoolBuckets(tx kv.RwTx) error {
@@ -358,10 +361,13 @@ func New(newTxs chan types.Announcements, coreDB kv.RoDB, cfg txpoolcfg.Config, 
 		return nil, err
 	}
 
+	nc := nonce_cache.NewNonceCache(nonce_cache.MaxNonceCacheSize)
+
 	byNonce := &BySenderAndNonce{
 		tree:             btree.NewG[*metaTx](32, SortByNonceLess),
 		search:           &metaTx{Tx: &types.TxSlot{}},
 		senderIDTxnCount: map[uint64]int{},
+		nonceCache:       nc,
 	}
 	tracedSenders := make(map[common.Address]struct{})
 	for _, sender := range cfg.TracedSenders {
@@ -398,6 +404,7 @@ func New(newTxs chan types.Announcements, coreDB kv.RoDB, cfg txpoolcfg.Config, 
 		aclDB:                   aclDB,
 		limbo:                   newLimbo(),
 		logLevel:                logLevel,
+		nonceCache:              nc,
 	}, nil
 }
 
@@ -1266,9 +1273,15 @@ func (p *TxPool) NonceFromAddress(addr [20]byte) (nonce uint64, inPool bool) {
 	defer p.lock.Unlock()
 	senderID, found := p.senders.getID(addr)
 	if !found {
-		return 0, false
+		return p.nonceCache.GetHighestNonceForSender(addr)
 	}
-	return p.all.nonce(senderID)
+
+	n, ip := p.all.nonce(senderID)
+	if !ip {
+		return p.nonceCache.GetHighestNonceForSender(addr)
+	}
+
+	return n, ip
 }
 
 func (p *TxPool) LockFlusher() {
@@ -1581,7 +1594,6 @@ func (p *TxPool) flushLocked(tx kv.RwTx) (err error) {
 				delete(p.senders.senderIDs, addr)
 			}
 		}
-		//fmt.Printf("del:%d,%d,%d\n", mt.Tx.senderID, mt.Tx.nonce, mt.Tx.tip)
 		has, err := tx.Has(kv.PoolTransaction, idHash)
 		if err != nil {
 			return err
@@ -2112,6 +2124,7 @@ type BySenderAndNonce struct {
 	tree             *btree.BTreeG[*metaTx]
 	search           *metaTx
 	senderIDTxnCount map[uint64]int // count of sender's txns in the pool - may differ from nonce
+	nonceCache       *nonce_cache.NonceCache
 }
 
 func (b *BySenderAndNonce) nonce(senderID uint64) (nonce uint64, ok bool) {
