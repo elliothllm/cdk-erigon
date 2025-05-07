@@ -1,0 +1,26 @@
+name: Type 1 test
+on:
+  push:
+    branches:
+      - zkevm
+      - stable/**
+      - project/**
+  pull_request:
+    branches:
+      - zkevm
+      - stable/**
+      - project/**
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+jobs:
+  type1-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cdk-erigon
+        uses: actions/checkout@v4
+      - name: Setup kurtosis
+        uses: ./.github/actions/setup-kurtosis
